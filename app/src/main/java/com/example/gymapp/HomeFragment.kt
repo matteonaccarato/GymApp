@@ -38,7 +38,8 @@ import com.squareup.picasso.Picasso
 import jp.wasabeef.picasso.transformations.CropSquareTransformation
 import java.util.Calendar
 import java.util.Locale
-
+import org.jtransforms.fft.FloatFFT_1D
+import kotlin.math.sqrt
 
 class HomeFragment : Fragment(), SensorEventListener {
 
@@ -59,8 +60,12 @@ class HomeFragment : Fragment(), SensorEventListener {
     private val accelerometerData = mutableListOf<FloatArray>()
 
     private var running = false
-    private var totalSteps = 0f
     private var previousTotalSteps = 0f
+    private var totalSteps = 0f
+    private val SAMPLE_RATE = 50 // 50Hz
+    private val FFT_WINDOW = 256
+    private val MIN_STEPS_FREQ = 1.0
+    private val MAX_STEPS_FREQ = 3.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -321,29 +326,76 @@ class HomeFragment : Fragment(), SensorEventListener {
         }
     }
 
+    /**
+     * Called when the fragment is visible to the user and actively running
+     * Get accelerometer and register Listener
+     */
     override fun onResume() {
         super.onResume()
         running = true
-        val stepSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-        if (stepSensor == null) {
+        if (accelerometer == null) {
             Toast.makeText(requireContext(), "No sensor detected on this device", Toast.LENGTH_SHORT).show()
         } else {
-            sensorManager?.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+            sensorManager?.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
         }
 
     }
+
+    /**
+     * Compute potential new steps through FFT
+     */
     override fun onSensorChanged(event: SensorEvent?) {
         if (running && event !== null) {
-            totalSteps = event.values[0]
-            Log.d("HomeFragment", "changed $totalSteps")
-            val currentSteps = totalSteps.toInt() - previousTotalSteps.toInt()
-            binding.tvStepsTaken.text = ("$currentSteps")
+            // Add new values to buffer
+            accelerometerData.add(event.values.clone())
+            if (accelerometerData.size >= FFT_WINDOW) {
+                val steps = calculateStepsUsingFFT(accelerometerData)
+                Log.d("HomeFragment", "Steps detected (FFT): $steps")
+                accelerometerData.clear() // clear buffer
+                totalSteps += steps       // increment total steps counter
+            }
 
+            // Update UI
+            binding.tvStepsTaken.text = ("${totalSteps.toInt()}")
             binding.progressCircular.apply {
-                setProgressWithAnimation(currentSteps.toFloat())
+                setProgressWithAnimation(totalSteps)
             }
         }
+    }
+
+
+    /**
+     * Compute steps through FFT (Fast Fourier Transformation)
+     */
+    private fun calculateStepsUsingFFT(data: List<FloatArray>): Int {
+        // Extract the magnitude of the accelerometer vector ( sqrt(X^2 + Y^2 + Z^2) )
+        val magnitudes = data.map { it ->
+            sqrt((it[0] * it[0] + it[1] * it[1] + it[2] * it[2]).toDouble()).toFloat()
+        }.toFloatArray()
+
+        // Apply FFT
+        val fft = FloatFFT_1D(magnitudes.size.toLong())
+        fft.realForward(magnitudes)
+
+        // Calculate power spectrum
+        val powerSpectrum = magnitudes.map { it * it }
+        // Find dominant frequency (related to steps)
+        val dominantFrequencyIndex = powerSpectrum.indexOf(powerSpectrum.drop(1).maxOrNull() ?: 0f) + 1
+
+        // Calculate frequency
+        val stepFrequency = dominantFrequencyIndex * (SAMPLE_RATE.toDouble() / magnitudes.size)
+        Log.d("HomeFragment", "StepFreq $stepFrequency")
+
+        // Filter frequency (standard walking frequency is in [1-3] Hz)
+        if (stepFrequency in MIN_STEPS_FREQ..MAX_STEPS_FREQ) {
+            // Return estimated steps
+            return (stepFrequency * (data.size / SAMPLE_RATE)).toInt()
+        }
+
+        // No steps detected
+        return 0
     }
 
     private fun resetSteps() {
@@ -371,11 +423,10 @@ class HomeFragment : Fragment(), SensorEventListener {
         val savedNumber = sharedPreferences.getFloat("key_previous_steps", 0f)
         Log.d("HomeFragment", "$savedNumber")
         previousTotalSteps = savedNumber
+          totalSteps = previousTotalSteps
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-
+        // Not used
     }
-
-
 }

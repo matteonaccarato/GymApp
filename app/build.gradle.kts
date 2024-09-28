@@ -90,4 +90,6 @@ dependencies {
     implementation("jp.co.cyberagent.android:gpuimage:2.1.0")
 
     implementation("com.mikhaellopez:circularprogressbar:3.1.0")
+
+    implementation("com.github.wendykierp:JTransforms:3.1")
 }
