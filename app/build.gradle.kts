@@ -89,4 +89,5 @@ dependencies {
     implementation("jp.wasabeef:picasso-transformations:2.4.0")
     implementation("jp.co.cyberagent.android:gpuimage:2.1.0")
 
+    implementation("com.mikhaellopez:circularprogressbar:3.1.0")
 }

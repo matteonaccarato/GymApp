@@ -2,13 +2,18 @@ package com.example.gymapp
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.Toast
 import android.widget.Toolbar
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -56,6 +61,14 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                0
+            )
+        }
+
+        if(Build.VERSION.SDK_INT >= 29){
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(android.Manifest.permission.ACTIVITY_RECOGNITION),
                 0
             )
         }

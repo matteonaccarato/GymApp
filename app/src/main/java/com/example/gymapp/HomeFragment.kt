@@ -4,7 +4,12 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Context.ALARM_SERVICE
+import android.content.Context.SENSOR_SERVICE
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -15,6 +20,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.content.ContextCompat.getSystemService
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Observer
@@ -34,7 +40,7 @@ import java.util.Calendar
 import java.util.Locale
 
 
-class HomeFragment : Fragment() {
+class HomeFragment : Fragment(), SensorEventListener {
 
     companion object {
         fun newInstance() = HomeFragment()
@@ -49,9 +55,17 @@ class HomeFragment : Fragment() {
     private lateinit var picker : MaterialTimePicker
     private lateinit var calendar : Calendar
     private var alarmManager : AlarmManager? = null
+    private var sensorManager: SensorManager? = null
+    private val accelerometerData = mutableListOf<FloatArray>()
+
+    private var running = false
+    private var totalSteps = 0f
+    private var previousTotalSteps = 0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        sensorManager = requireContext().getSystemService(SENSOR_SERVICE) as SensorManager
     }
 
     override fun onCreateView(
@@ -59,6 +73,8 @@ class HomeFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         binding = FragmentHomeBinding.inflate(inflater, container, false)
+        loadData()
+        resetSteps()
         return binding.root
     }
 
@@ -304,4 +320,62 @@ class HomeFragment : Fragment() {
             it.write(alarmInfo.toFile().toByteArray())
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        running = true
+        val stepSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+
+        if (stepSensor == null) {
+            Toast.makeText(requireContext(), "No sensor detected on this device", Toast.LENGTH_SHORT).show()
+        } else {
+            sensorManager?.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+
+    }
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (running && event !== null) {
+            totalSteps = event.values[0]
+            Log.d("HomeFragment", "changed $totalSteps")
+            val currentSteps = totalSteps.toInt() - previousTotalSteps.toInt()
+            binding.tvStepsTaken.text = ("$currentSteps")
+
+            binding.progressCircular.apply {
+                setProgressWithAnimation(currentSteps.toFloat())
+            }
+        }
+    }
+
+    private fun resetSteps() {
+        binding.tvStepsTaken.setOnClickListener {
+            Toast.makeText(requireContext(), "Long tap to reset steps", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.tvStepsTaken.setOnLongClickListener() {
+            previousTotalSteps = totalSteps
+            binding.tvStepsTaken.text = 0.toString()
+            saveData()
+            true
+        }
+    }
+
+    private fun saveData() {
+        val sharedPreferences = requireContext().getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putFloat("key_previous_steps", previousTotalSteps)
+        editor.apply()
+    }
+
+    private fun loadData() {
+        val sharedPreferences = requireContext().getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+        val savedNumber = sharedPreferences.getFloat("key_previous_steps", 0f)
+        Log.d("HomeFragment", "$savedNumber")
+        previousTotalSteps = savedNumber
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+
+    }
+
+
 }
